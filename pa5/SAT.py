@@ -1,7 +1,14 @@
 
 
 from typing import Dict, Iterable, List, Optional, Tuple
+import random
+import math
 
+ClauseIndex = int
+VariableIndex = int
+
+def randbool():
+    return random.random() > 0.5
 class SAT:
 
     STR_PREFIXES = {
@@ -12,48 +19,107 @@ class SAT:
 
     def __init__(self, cnf_filepath: str) -> None:
         
-        
-        
-        self.filepath = cnf_filepath
-        self.variable_indices: Dict[str, int] = {}
         self.variable_names: Dict[int, str] = {}
         self.clauses: List[Dict[int, bool]] = []
-
+        
         with open(cnf_filepath) as f:
+            variable_indices: Dict[str, int] = {}
             for line in f:
                 tokens = line.split()
                 parsed = list(map(self._parse_token, tokens))
                 
-                self._add_missing_variables(parsed)
-                self._add_cnf_clause(parsed)
-
-        self.assignments: List[Optional[bool]] = [None] * len(self.variable_indices)
+                self._add_missing_variables(parsed, variable_indices)
+                self._add_cnf_clause(parsed, variable_indices)
     
-    def _add_missing_variables(self, vars: Iterable[Tuple[bool, str]]):
+    def _add_missing_variables(self, vars: Iterable[Tuple[bool, str]], variable_indices):
         for (_, vname) in vars:
-            if not vname in self.variable_indices:
-                var_index = len(self.variable_indices)
-                self.variable_indices[vname] = var_index
+            if not vname in variable_indices:
+                var_index = len(variable_indices)
+                variable_indices[vname] = var_index
                 self.variable_names[var_index] = vname
 
-    def _add_cnf_clause(self, vars: Iterable[Tuple[bool, str]]):
+    def _add_cnf_clause(self, vars: Iterable[Tuple[bool, str]], variable_indices):
 
         def generate_clause_dict():
             for is_positive, var_name in vars:
-                yield self.variable_indices[var_name], is_positive 
+                yield variable_indices[var_name], is_positive 
         
         clause: Dict[int, bool] = dict(generate_clause_dict())
         self.clauses.append(clause)
     
-    def walksat(self):
-        pass
+    def select_best_variable(self, p: float, model: List[bool], choices: Iterable[VariableIndex]):
 
-    def write_solution(self, solution_file: str):
+        # Case 1: Pick a variable at random
+        if random.random() < p:
+            return random.choice(choices)
 
+        # Case 2: flip the variable that maximizes # of satisfied clauses
+        max_satisfied_clauses = -math.inf
+        chosen_var_index = None
+        for var_index in choices:
+            model[var_index] = not model[var_index]
+            count_satisified_clauses = len(self.get_unsatisfied_clauses(model))
+            if count_satisified_clauses > max_satisfied_clauses:
+                chosen_var_index = var_index
+                max_satisfied_clauses = count_satisified_clauses
+            model[var_index] = not model[var_index]
         
+        return chosen_var_index
+
+    def gsat(self, p: float, max_flips: int):
+        
+        def pick_flip_var(model):
+            all_variables = range(len(self.variable_names))
+            return self.select_best_variable(p, model, all_variables)
+
+        return self._sat_common(max_flips, pick_flip_var)
+
+    def walksat(self, p: float, max_flips: int):
+
+        def pick_flip_var(model):
+            unsatisfied_clauses = self.get_unsatisfied_clauses(model)
+            clause_of_interest = random.choice(unsatisfied_clauses)
+            clause = self.clauses[clause_of_interest]
+
+
+            return self.select_best_variable(p, model, list(clause.keys()))
+
+        return self._sat_common(max_flips, pick_flip_var)
+    
+    def _sat_common(self, max_flips, pick_flip_var):
+
+        # Initialize with random model
+        model = [randbool() for _ in range(len(self.variable_names))]
+
+        for _ in range(max_flips - 1):
+            unsatisfied_clauses = list(self.get_unsatisfied_clauses(model))
+            if len(unsatisfied_clauses) == 0:
+                # Success! We've found a model that satisfies the KB
+                return model
+            
+            flip_var = pick_flip_var(model)
+            model[flip_var] = not model[flip_var]
+
+        return None
+    
+    def get_unsatisfied_clauses(self, model: List[bool]) -> Iterable[ClauseIndex]:
+        return [i for i in range(len(self.clauses)) if not self.is_clause_satisfied(model, i)]
+
+    def is_clause_satisfied(self, model: List[bool], clause_index: ClauseIndex):
+        clause = self.clauses[clause_index]
+
+        # if any of the variables in the clause match their value, the 
+        # clause will be satisfied
+        for var_index in clause:
+            if model[var_index] == clause[var_index]:
+                return True
+        
+        return False
+
+    def write_solution(self, model, solution_file: str):
 
         with open(solution_file, 'w') as f:
-            for (i, assn) in enumerate(self.assignments):
+            for (i, assn) in enumerate(model):
                 prefix = SAT.STR_PREFIXES[assn]
                 vname = self.variable_names[i]
                 f.write(f"{prefix}{vname}\n")
@@ -83,4 +149,6 @@ class SAT:
 
 if __name__ == "__main__":
     sat = SAT("one_cell.cnf")
-    print(sat)
+    model = sat.walksat(0.3, 1000)
+
+    print(model)
