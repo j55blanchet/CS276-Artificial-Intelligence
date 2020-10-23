@@ -1,5 +1,6 @@
 
 
+from display import display_sudoku_solution
 from typing import Dict, Iterable, List, Optional, Tuple
 import random
 import math
@@ -30,6 +31,12 @@ class SAT:
                 
                 self._add_missing_variables(parsed, variable_indices)
                 self._add_cnf_clause(parsed, variable_indices)
+
+        
+        self.stats_flips = 0
+
+        self.p_model_stored = None
+        self.p_unsatisfied_clauses = None
     
     def _add_missing_variables(self, vars: Iterable[Tuple[bool, str]], variable_indices):
         for (_, vname) in vars:
@@ -66,21 +73,19 @@ class SAT:
         
         return chosen_var_index
 
-    def gsat(self, p: float, max_flips: int):
+    def gsat(self, p: float = 0.3, max_flips: int = 100000):
         
-        def pick_flip_var(model):
+        def pick_flip_var(model, _):
             all_variables = range(len(self.variable_names))
             return self.select_best_variable(p, model, all_variables)
 
         return self._sat_common(max_flips, pick_flip_var)
 
-    def walksat(self, p: float, max_flips: int):
+    def walksat(self, p: float = 0.3, max_flips: int = 100000):
 
-        def pick_flip_var(model):
-            unsatisfied_clauses = self.get_unsatisfied_clauses(model)
+        def pick_flip_var(model, unsatisfied_clauses):
             clause_of_interest = random.choice(unsatisfied_clauses)
             clause = self.clauses[clause_of_interest]
-
 
             return self.select_best_variable(p, model, list(clause.keys()))
 
@@ -90,6 +95,7 @@ class SAT:
 
         # Initialize with random model
         model = [randbool() for _ in range(len(self.variable_names))]
+        self.stats_flips = 0
 
         for _ in range(max_flips - 1):
             unsatisfied_clauses = list(self.get_unsatisfied_clauses(model))
@@ -97,8 +103,9 @@ class SAT:
                 # Success! We've found a model that satisfies the KB
                 return model
             
-            flip_var = pick_flip_var(model)
+            flip_var = pick_flip_var(model, unsatisfied_clauses)
             model[flip_var] = not model[flip_var]
+            self.stats_flips += 1
 
         return None
     
@@ -116,18 +123,25 @@ class SAT:
         
         return False
 
-    def write_solution(self, model, solution_file: str):
-
-        with open(solution_file, 'w') as f:
-            for (i, assn) in enumerate(model):
-                prefix = SAT.STR_PREFIXES[assn]
-                vname = self.variable_names[i]
-                f.write(f"{prefix}{vname}\n")
-    
-
+                
     #####################
     # Utility Functions #
     #####################
+
+    def generate_solution_lines(self, model) -> Iterable[str]:
+        for (i, assn) in enumerate(model):
+                prefix = SAT.STR_PREFIXES[assn]
+                vname = self.variable_names[i]
+                yield f"{prefix}{vname}"
+
+    def write_solution(self, model, solution_file: str):
+        with open(solution_file, 'w') as f:
+            for line in self.generate_solution_lines(model):
+                f.write(line + "\n")
+
+    def solution_str(self, model) -> str:
+        return "\n".join(self.generate_solution_lines(model))
+
     def _parse_token(self, token: str) -> Tuple[bool, str]:
         assert len(token) > 1
         positive =  token[0] != '-'
@@ -151,4 +165,4 @@ if __name__ == "__main__":
     sat = SAT("one_cell.cnf")
     model = sat.walksat(0.3, 1000)
 
-    print(model)
+    print(sat.solution_str(model))
