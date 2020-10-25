@@ -3,6 +3,7 @@
 from display import display_sudoku_solution
 from typing import Dict, Iterable, List, Optional, Tuple
 import random
+import time
 import math
 
 ClauseIndex = int
@@ -18,22 +19,31 @@ class SAT:
         False: '-'
     }
 
-    def __init__(self, cnf_filepath: str) -> None:
+    def __init__(self, input: str, as_file=True) -> None:
         
         self.variable_names: Dict[int, str] = {}
         self.clauses: List[Dict[int, bool]] = []
         
-        with open(cnf_filepath) as f:
-            variable_indices: Dict[str, int] = {}
-            for line in f:
-                tokens = line.split()
-                parsed = list(map(self._parse_token, tokens))
-                
-                self._add_missing_variables(parsed, variable_indices)
-                self._add_cnf_clause(parsed, variable_indices)
+        input_lines: List[str] = []
+        if as_file:
+            with open(input) as f:
+                input_lines = f.readlines()
+        else:
+            input_lines = input.split('\n')
 
+        variable_indices: Dict[str, int] = {}
+        for line in input_lines:
+            tokens = line.split()
+            parsed = list(map(self._parse_token, tokens))
+            # empty line
+            if len(parsed) == 0:
+                continue
+            self._add_missing_variables(parsed, variable_indices)
+            self._add_cnf_clause(parsed, variable_indices)
         
         self.stats_flips = 0
+        self.stats_time_started = 0
+        self.stats_time_elapsed = 0
 
         self.p_model_stored = None
         self.p_unsatisfied_clauses = None
@@ -96,17 +106,25 @@ class SAT:
         # Initialize with random model
         model = [randbool() for _ in range(len(self.variable_names))]
         self.stats_flips = 0
+        self.stats_time_started = time.perf_counter()
 
-        for _ in range(max_flips - 1):
+        for flipnum in range(max_flips - 1):
             unsatisfied_clauses = list(self.get_unsatisfied_clauses(model))
             if len(unsatisfied_clauses) == 0:
                 # Success! We've found a model that satisfies the KB
+                self.stats_time_elapsed = time.perf_counter() - self.stats_time_started
                 return model
             
+            if (1 + flipnum) % 200 == 0:
+                percent = 100 * (flipnum + 1) / max_flips
+                percent_unsatisfied_clauses =  len(unsatisfied_clauses) / len(self.clauses)
+                
+                print(f"Flip {flipnum + 1}/{max_flips} ({percent:.2f}%) - {len(unsatisfied_clauses)}/{len(self.clauses)} unsatisfied clauses ({percent_unsatisfied_clauses:.2f}%)")
             flip_var = pick_flip_var(model, unsatisfied_clauses)
             model[flip_var] = not model[flip_var]
             self.stats_flips += 1
 
+        self.stats_time_elapsed = time.perf_counter() - self.stats_time_started
         return None
     
     def get_unsatisfied_clauses(self, model: List[bool]) -> Iterable[ClauseIndex]:
@@ -140,10 +158,11 @@ class SAT:
                 f.write(line + "\n")
 
     def solution_str(self, model) -> str:
-        return "\n".join(self.generate_solution_lines(model))
+        s = "No solution" if model is None else "\n".join(self.generate_solution_lines(model))
+        return f"{s}\nTook {self.stats_time_elapsed} secs, performed {self.stats_flips} flips"
 
     def _parse_token(self, token: str) -> Tuple[bool, str]:
-        assert len(token) > 1
+        assert len(token) >= 1
         positive =  token[0] != '-'
         vname = token[1:] if not positive else token
         assert len(vname) > 0

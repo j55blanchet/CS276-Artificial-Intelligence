@@ -20,9 +20,12 @@ class Sudoku:
     def set(self, r, c, value):
         self.numbers[r - 1][c - 1] = value
 
-    def read_solution(self, filename):
-        f = open(filename, "r")
-        for line in f:
+    def read_solution(self, input, as_file=True):
+        if as_file:
+            with open(input, "r") as f:
+                input = f.readlines()
+            
+        for line in input:
             # ignore unset variables
             literal = int(line)
             if literal > 0:
@@ -30,8 +33,6 @@ class Sudoku:
                 c = int(line[1])
                 v = int(line[2])
                 self.set(r, c, v)
-
-        f.close()
 
     def __str__(self):
         s = ""
