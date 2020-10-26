@@ -9,4 +9,5 @@ This program is built for (and relies on) **python 3.8+**.
 
 ## Running
 
-* Execute `python solve_sodoku.py <puzzlename.cnf>
+* Execute `python solve_sodoku.py <puzzlename.cnf>`
+* To run unit test cases, use either `pytest` or simply run `python test_sat.py`
